@@ -21,15 +21,65 @@ Aquesta API escrita en Node.js implementa un control d'accés basat en rols (RBA
 - **Protecció de Sistema:** Bloqueig d'eliminació per a rols i permisos crítics.
 - **Seeding Automàtic:** Script per inicialitzar la base de dades amb una arquitectura de seguretat funcional.
 
-## 🚦 Instal·lació i Ús
+## 📊 Sistema de Permisos i Relacions
 
-1. Instal·lar dependències:
+El sistema utilitza una jerarquia de tres nivells per gestionar l'accés:
+
+1. **Permisos:** Accions atòmiques (ex: `users:read`, `tasks:delete`).
+2. **Rols:** Grups de permisos (ex: l'usuari "admin" té tots els permisos).
+3. **Usuaris:** Poden tenir un o més rols assignats.
+
+### Diagrama de Relacions (ER)
+
+```mermaid
+erDiagram
+    USER ||--o{ ROLE : te
+    ROLE ||--o{ PERMISSION : conte
+    USER {
+        string name
+        string email
+        string password
+        objectId_array roles
+    }
+    ROLE {
+        string name
+        string description
+        boolean isSystemRole
+        objectId_array permissions
+    }
+    PERMISSION {
+        string name
+        string description
+        string category
+        boolean isSystemPermission
+    }
+    AUDIT_LOG {
+        objectId userId
+        string action
+        string resource
+        string status
+        object changes
+        string ipAddress
+    }
+```
+
+## 🚦 Instal·lació i Ús (Setup)
+
+1. **Clonar el repositori:**
+
+   ```bash
+   git clone https://github.com/jasonokoro10/rols_permisos_node.git
+   cd rols_permisos_node
+   ```
+
+2. **Instal·lar dependències:**
 
    ```bash
    npm install
    ```
 
-2. Configurar variables d'entorn al fitxer `.env`:
+3. **Configurar variables d'entorn (.env):**
+   Crea un fitxer `.env` a la arrel amb:
 
    ```env
    PORT=3000
@@ -38,16 +88,41 @@ Aquesta API escrita en Node.js implementa un control d'accés basat en rols (RBA
    JWT_EXPIRE=30d
    ```
 
-3. Inicialitzar la base de dades:
+4. **Inicialitzar la base de dades (Seeding):**
+   Aquest pas crea els permisos, rols i l'usuari admin inicial.
 
    ```bash
    npm run seed:rbac
    ```
 
-4. Executar en mode desenvolupament:
+5. **Executar el servidor:**
    ```bash
    npm run dev
    ```
+
+## 🧪 Exemples d'ús (Endpoints)
+
+### Autenticació
+
+- **POST** `/api/auth/login`: Obté el token JWT.
+- **POST** `/api/auth/check-permission`: Verifica si el token actual té un permís.
+
+### Administració (Requereix Admin)
+
+- **GET** `/api/admin/users`: Llista d'usuaris.
+- **GET** `/api/admin/roles`: Llista de rols.
+- **GET** `/api/admin/audit`: Logs d'auditoria.
+- **GET** `/api/admin/audit/stats`: Estadístiques d'ús.
+
+## ⚠️ Casos d'Error Documentats
+
+| Codi | Error             | Descripció                                                           |
+| ---- | ----------------- | -------------------------------------------------------------------- |
+| 401  | No autenticat     | El token falta o ha caducat.                                         |
+| 403  | Forbidden         | L'usuari no té el permís necessari per a l'acció.                    |
+| 403  | Sistema Protegit  | Intent d'eliminar un rol o permís de sistema (`isSystemRole: true`). |
+| 400  | Validació fallida | El format del permís no és `recurso:accion` o falten camps.          |
+| 404  | No trobat         | El recurs (ID) no existeix a la base de dades.                       |
 
 ## 🧪 Usuari Administrador Inicial
 
