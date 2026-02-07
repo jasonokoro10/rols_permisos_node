@@ -1,54 +1,59 @@
-const AuditLog = require('../models/AuditLog');
+const AuditLog = require('../models/AuditLog'); // Importem el model per desar els logs
 
 /**
- * Middleware global o específico per a auditar accions
+ * Middleware especialitzat per a l'auditoria automàtica d'accions.
+ * Captura detalls de les peticions que modifiquen dades o rutes d'administració.
  */
 const auditMiddleware = async (req, res, next) => {
-    // Solo auditamos métodos que cambian datos o lecturas en /admin
+    // Escollim només els mètodes que realitzen canvis a la base de dades
     const methodsToAudit = ['POST', 'PUT', 'DELETE', 'PATCH'];
-    const isAdminRoute = req.originalUrl.includes('/api/admin');
+    const isAdminRoute = req.originalUrl.includes('/api/admin'); // Verifiquem si és una ruta d'administració
 
+    // Si no és un mètode de canvi i no és ruta d'admin, passem de llarg
     if (!methodsToAudit.includes(req.method) && !isAdminRoute) {
         return next();
     }
 
-    // Escoltem quan la resposta s'ha acabat d'enviar
+    // Utilitzem l'esdeveniment 'finish' per registrar el log quan la petició s'ha completat
     res.on('finish', async () => {
-        try {
-            // Si no hay usuario (ej: login fallido), no podemos auditar por ID
-            // a menos que sea una acción de auth, pero aquí priorizamos usuarios logueados
+        try { // Bloc d'intent per no bloquejar l'app principal
+            // Només auditem si l'usuari ha estat identificat pel middleware d'autenticació
             if (!req.user) return;
 
+            // Determinem l'acció: o bé el permís utilitzat o bé el mètode i la URL
             const action = req.permissionUsed || `${req.method}:${req.originalUrl}`;
+
+            // Definim l'estat en funció del codi HTTP de resposta
             const status = res.statusCode >= 400 ? 'error' : 'success';
 
-            // Intentamos obtener el ID del recurso desde los parámetros con seguridad
+            // Intentem extreure l'ID del recurs afectat (de la URL o del body)
             const resource = (req.params && req.params.id) || (req.body && req.body.id) || null;
 
-            // Determinamos el tipo de recurso basado en la URL
+            // Classificació del tipus de recurs segons l'endpoint utilitzat
             let resourceType = 'unknown';
             if (req.originalUrl.includes('/tasks')) resourceType = 'task';
             if (req.originalUrl.includes('/users')) resourceType = 'user';
             if (req.originalUrl.includes('/roles')) resourceType = 'role';
 
+            // Cridem el mètode estàtic del model AuditLog per desar el registre
             await AuditLog.log({
-                userId: req.user._id,
-                action: action,
-                resource: resource,
-                resourceType: resourceType,
-                status: status,
-                changes: req.auditData || null, // Los controladores pueden llenar esto
-                errorMessage: status === 'error' ? res.statusMessage : null,
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('User-Agent')
+                userId: req.user._id, // Qui ho ha fet
+                action: action, // Què ha fet
+                resource: resource, // Sobre què (ID)
+                resourceType: resourceType, // Tipus d'objecte
+                status: status, // Èxit o Error
+                changes: req.auditData || null, // Canvis detallats enviats pel controlador
+                errorMessage: status === 'error' ? res.statusMessage : null, // Error HTTP si n'hi ha
+                ipAddress: req.ip || req.connection.remoteAddress, // Adreça IP de l'usuari
+                userAgent: req.get('User-Agent') // Informació del navegador/sistema
             });
         } catch (error) {
-            // Importante: No bloqueamos la ejecución principal por un fallo en el log
+            // El registre d'auditoria no ha de trencar mai l'experiència de l'usuari
             console.error('Error en el middleware d’auditoria:', error);
         }
     });
 
-    next();
+    next(); // Continuem amb la següent fase de la petició
 };
 
-module.exports = auditMiddleware;
+module.exports = auditMiddleware; // Exportem per fer-lo servir globalment a app.js

@@ -1,54 +1,56 @@
-const mongoose = require('mongoose');
+const mongoose = require('mongoose'); // Importem Mongoose per a la gestió de la base de dades
 
+// Esquema per al registre d'auditoria (Audit Log)
 const auditLogSchema = new mongoose.Schema({
     userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: [true, 'El ID de usuario es obligatorio'],
-        index: true // Indexamos para búsquedas rápidas por usuario
+        type: mongoose.Schema.Types.ObjectId, // ID de l'usuari que fa l'acció
+        ref: 'User', // Referència al model User
+        required: [true, 'L’ID de l’usuari és obligatori'], // Missatge d'error en català
+        index: true // Millora el rendiment en cerques per usuari
     },
     action: {
-        type: String,
-        required: [true, 'La acción es obligatoria'],
-        index: true // Ejemplo: "tasks:update"
+        type: String, // Nom de l'acció realitzada (ex: "tasks:update")
+        required: [true, 'L’acció és obligatòria'], // Camp obligatori
+        index: true // Facilita el filtratge per tipus d'acció
     },
     resource: {
-        type: String, // ID del recurso (ej: ID de la tarea)
+        type: String, // ID del recurs afectat (ID de la tasca, rol, etc.)
         required: false
     },
     resourceType: {
-        type: String, // "task", "user", "role", etc.
+        type: String, // Tipus de recurs: "task", "user", "role", etc.
         required: false,
         index: true
     },
     status: {
-        type: String,
-        enum: ['success', 'error'],
+        type: String, // Estat del resultat
+        enum: ['success', 'error'], // Valors permesos
         required: true
     },
     changes: {
-        type: Object, // Guardaremos { campo: "antes -> después" }
+        type: Object, // Desa un resum dels canvis fets (abans -> després)
         default: null
     },
     errorMessage: {
-        type: String,
+        type: String, // Missatge d'error si el status és 'error'
         default: null
     },
     ipAddress: {
-        type: String
+        type: String // Adreça IP des d'on s'ha fet la petició
     },
     userAgent: {
-        type: String
+        type: String // Navegador o aplicació utilitzada
     },
     timestamp: {
-        type: Date,
+        type: Date, // Data i hora exacta de l'esdeveniment
         default: Date.now,
         index: true
     }
 });
 
 /**
- * MÈTODE ESTÀTIC: Registrar una acción de forma centralizada
+ * MÈTODE ESTÀTIC: Registrar una acció de forma centralitzada
+ * Facilita la creació de logs des de qualsevol part de l'aplicació
  */
 auditLogSchema.statics.log = async function (data) {
     try {
@@ -65,24 +67,24 @@ auditLogSchema.statics.log = async function (data) {
         });
     } catch (error) {
         console.error('Error guardant el log d’auditoria:', error);
-        // En producción, aquí podrías enviar una alerta a un sistema externo
     }
 };
 
 /**
- * MÈTODE ESTÀTIC: Estadístiques bàsiques
+ * MÈTODE ESTÀTIC: Obtenir estadístiques d'ús de l'auditoria
+ * Utilitza l'operació d'agregació de MongoDB per resumir dades
  */
 auditLogSchema.statics.getStats = async function () {
     return await this.aggregate([
         {
             $facet: {
-                totalActions: [{ $count: "count" }],
-                topActions: [
+                totalActions: [{ $count: "count" }], // Compta el total de logs
+                topActions: [ // Agrupa per accions més freqüents
                     { $group: { _id: "$action", count: { $sum: 1 } } },
                     { $sort: { count: -1 } },
                     { $limit: 5 }
                 ],
-                errors: [
+                errors: [ // Cerca els errors més comuns
                     { $match: { status: "error" } },
                     { $group: { _id: "$errorMessage", count: { $sum: 1 } } },
                     { $limit: 5 }
@@ -92,4 +94,5 @@ auditLogSchema.statics.getStats = async function () {
     ]);
 };
 
+// Exportem el model AuditLog
 module.exports = mongoose.model('AuditLog', auditLogSchema);
